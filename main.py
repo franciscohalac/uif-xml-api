@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from datetime import datetime
 from io import BytesIO
+import shutil
 
 app = Flask(__name__)
 
@@ -45,28 +46,27 @@ def create_user_xml(user_data, output_dir):
 @app.route("/", methods=["GET", "POST"])
 def upload_csv():
     if request.method == "POST":
-        csv_file = request.files["file"]
-        if not csv_file:
-            return "No se subió ningún archivo."
+        file = request.files['file']
+        if not file:
+            return "No se subió ningún archivo", 400
 
-        df = pd.read_csv(csv_file, sep=";", dtype=str).fillna("")
-        
-        output_dir = "xml_output"
-        os.makedirs(output_dir, exist_ok=True)
+        # Eliminar carpeta y ZIP anteriores
+        if os.path.exists("xml_output"):
+            shutil.rmtree("xml_output")
+        if os.path.exists("xml_users.zip"):
+            os.remove("xml_users.zip")
 
-        # Limpia archivos anteriores
-        for f in os.listdir(output_dir):
-            os.remove(os.path.join(output_dir, f))
+        os.makedirs("xml_output", exist_ok=True)
 
-        # Genera XMLs
+        df = pd.read_csv(file, sep=';', dtype=str).fillna("")
+
         for _, row in df.iterrows():
-            create_user_xml(row.to_dict(), output_dir)
+            create_user_xml(row.to_dict(), "xml_output")
 
-        # Crea el ZIP en memoria
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, "w") as zipf:
-            for filename in os.listdir(output_dir):
-                path = os.path.join(output_dir, filename)
+            for filename in os.listdir("xml_output"):
+                path = os.path.join("xml_output", filename)
                 zipf.write(path, arcname=filename)
         zip_buffer.seek(0)
 
@@ -77,16 +77,16 @@ def upload_csv():
             download_name='xml_users.zip'
         )
 
-    # Formulario de carga
+    # Formulario simple
     return render_template_string('''
         <!doctype html>
         <title>Generador XML UIF</title>
-        <h1>Subí tu archivo CSV</h1>
+        <h1>Subí tu archivo CSV con formato UIF</h1>
         <form method=post enctype=multipart/form-data>
-          <input type=file name=file>
+          <input type=file name=file accept=".csv">
           <input type=submit value=Generar>
         </form>
     ''')
 
-if __name__ == "__main__":
-    app.run(debug=True)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
